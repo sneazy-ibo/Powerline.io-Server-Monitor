@@ -1,0 +1,32 @@
+name: Fetch Room Data
+
+on:
+  push:
+    branches:
+      - altair
+  workflow_dispatch:  # Triggered externally by cron-job.org or manually
+
+jobs:
+  update-status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          submodules: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+      
+      - name: Install dependencies
+        run: bun install
+      
+      - name: Run main script
+        run: bun run index.js
+        env:
+          PROTOCOL_KEYS: ${{ secrets.PROTOCOL_KEYS }}
+          DISCORD_WEBHOOK_URLS: ${{ secrets.DISCORD_WEBHOOK_URLS }}
+          DISCORD_MESSAGE_IDS: ${{ secrets.DISCORD_MESSAGE_IDS }}

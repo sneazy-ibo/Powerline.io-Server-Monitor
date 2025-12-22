@@ -1,0 +1,15 @@
+{
+  "name": "powerline-room-stats",
+  "version": "1.0.0",
+  "description": "Discord status tracker for Powerline.io servers",
+  "main": "index.js",
+  "scripts": {
+    "start": "bun run index.js"
+  },
+  "type": "module",
+  "author": "sneazy-ibo",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.5.0"
+  }
+}
