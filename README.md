@@ -46,7 +46,7 @@ This separation is intentional to prevent misuse of the reversed protocol for bo
 
 ## 🖼️ Example Output
 
-Discord embed showing near real-time room stats and leaderboard updates in the official Discord server:
+Discord embed showing near real-time room stats and leaderboard updates in the official Powerline.io Discord server:
 
 ![Discord Embed Preview](/embed_example.png)
 
