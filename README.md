@@ -1,35 +1,37 @@
-# 🐍 Powerline.io Server Monitor 📊
+# Powerline.io Server Monitor
 
-A periodically updated monitoring system for **Powerline.io** that tracks room activity, player statistics, and regional leaderboards.
+A periodically updated monitoring system for [powerline.io](https://powerline.io) that tracks room activity, player statistics, and regional leaderboards.
 
+> [!IMPORTANT]
 > This project focuses on data visualization and reporting. The core data collection and game interaction logic is handled externally.
+> It is not affiliated with Powerline.io or its developer.
 
 ---
 
-## 🚀 Features
+##  Features
 
-- 🌍 **Multi-region monitoring** (EU / US / AS)
-- 📊 **Scheduled server stats aggregation**
-- 🔗 **Clickable room code links**
-- 🏆 **Top player leaderboards per region**
-- 🔔 **Discord webhook integration**
-- 📡 **Automated periodic updates**
+- **Monitoring of all regions** (EU / US / AS)
+- **Scheduled server stats aggregation**
+- **Clickable room code links**
+- **Top player leaderboards per region**
+- **Discord webhook integration**
+- **Automated periodic updates**
 
-## 🧩 Architecture
+## Architecture
 
 This system consists of two decoupled components:
 
-### 📡 Public Monitor (this repository)
+### Public Monitor (this repository)
 - Discord webhook integration
 - Data formatting and embed generation
 - Aggregation and presentation of server statistics
 - Multi-region visualization logic
 
-### 🔒 Core Data System (external)
+### Core Data System (external)
 Responsible for collecting and processing raw data from WebSocket connections.
 This separation is intentional to prevent misuse of the reversed protocol for bots/exploits.
 
-## 🏗️ How It Works
+## How It Works
 
 1. The system queries the Powerline master server to retrieve the latest available regional room descriptors
    (`http://master.powerline.io`)
@@ -44,15 +46,8 @@ This separation is intentional to prevent misuse of the reversed protocol for bo
 
 6. Updates are dispatched to configured Discord webhooks
 
-## 🖼️ Example Output
+## Example Output
 
 Discord embed showing near real-time room stats and leaderboard updates in the official Powerline.io Discord server:
 
 ![Discord Embed Preview](/embed_example.png)
-
-
-## ⚠️ Disclaimer
-
-This project is not affiliated with Powerline.io or its developer.
-
-It is intended for informational and visualization purposes only.
