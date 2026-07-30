@@ -77,18 +77,32 @@ async function gatherRoomData(allRooms) {
 
 function createServerField(region, room, data) {
   const { emoji, name } = REGION_CONFIG[region];
-  const ping = data?.ping ?? 'N/A';
-  const arena = data?.arenaWidth && data?.arenaHeight
-    ? `${data.arenaWidth.toFixed(0)}x${data.arenaHeight.toFixed(0)}`
-    : 'N/A';
+
+  if (!room) {
+    return { name: `${emoji} ${name}`, value: 'Unavailable', inline: true };
+  }
+
   const players = data?.totalPlayers ?? 0;
-  const isHot = players > 15 ? '🔥' : '';
+  const arena = data?.arenaWidth != null && data?.arenaHeight != null
+      ? `${Math.round(data.arenaWidth)}x${Math.round(data.arenaHeight)}`
+      : 'N/A';
 
-  const value = room
-    ? `🏟️ Arena: ${arena}\n👥 Players: ${players} ${isHot}\n\n🔗 Room: [${room.roomCode}](https://powerline.io/#${room.roomCode})\n🏓 Ping: ${ping}ms\n🚦 Status: ✅ Online`
-    : `🏟️ Arena: N/A\n👥 Players: 0\n\n🔗 Room: N/A\n🏓 Ping: N/A\n🚦 Status: ❌ Down`;
+  const lines = [
+    `🏟️ Arena: ${arena}`,
+    `👥 Players: ${players}${players > 15 ? ' 🔥' : ''}`,
+    '',
+    `🔗 Room: [${room.roomCode}](https://powerline.io/#${room.roomCode})`,
+  ];
 
-  return { name: `${emoji} ${name}`, value, inline: true };
+  if (data?.ping != null) {
+    lines.push(`🏓 Ping: ${data.ping}ms`);
+  }
+
+  return {
+    name: `${emoji} ${name}`,
+    value: lines.join('\n'),
+    inline: true,
+  };
 }
 
 function createLeaderboardField(region, data) {

@@ -27,6 +27,7 @@ jobs:
       - name: Run main script
         run: bun run index.js
         env:
+          ENDPOINT: ${{ secrets.ENDPOINT }}
           PROTOCOL_KEYS: ${{ secrets.PROTOCOL_KEYS }}
           DISCORD_WEBHOOK_URLS: ${{ secrets.DISCORD_WEBHOOK_URLS }}
           DISCORD_MESSAGE_IDS: ${{ secrets.DISCORD_MESSAGE_IDS }}

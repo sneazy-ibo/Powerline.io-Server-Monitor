@@ -1,46 +1,49 @@
-import PowerlineBot from './bot-core/bot-logic.js';
+import 'dotenv/config';
 
-function parseServerAddress(serverAddress) {
+function getStatsUrl(serverAddress) {
   const [addressPart, roomNumber] = serverAddress.split('/');
   const [serverIp, port] = addressPart.split(':');
   const sdm = roomNumber === undefined ? parseInt(port) : 8080;
-  const sslPort = (parseInt(roomNumber) || 0) + sdm + 1000;
-  
-  const wsUrl = `wss://${serverIp.replace(/\./g, '-')}.powerline.io:${sslPort}/`;
-  return wsUrl;
+  const sslPort = (parseInt(roomNumber) || 0) + sdm;
+
+  return `http://${serverIp}:${sslPort}${ process.env.ENDPOINT}`;
 }
 
 async function fetchGameStats(serverAddress) {
-  const wsUrl = parseServerAddress(serverAddress);
-  console.log(`Connecting to: ${wsUrl}`);
-  
-  const bot = new PowerlineBot(wsUrl);
-  
+  const url = getStatsUrl(serverAddress);
+  console.log(`Fetching stats from: ${url}`);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
   try {
-    await bot.connect();
-    
-    // Wait for data to populate
-    await new Promise(resolve => {
-      const checkInterval = setInterval(() => {
-        if (bot.arenaSize > 0 && bot.ping > 0) {
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 500);
-      
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        resolve();
-      }, 10000);
-    });
-    
-    const data = bot.getData();
-    bot.disconnect();
-    
-    return data;
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      throw new Error(`Stats endpoint returned ${response.status}`);
+    }
+
+    const json = await response.json();
+
+    const leaderboard = (json.leaderboard || [])
+      .sort((a, b) => a.rank - b.rank)
+      .map(entry => ({
+        id: entry.playerId,
+        nick: entry.nick,
+        score: entry.score
+      }));
+
+    return {
+      ping: null,
+      arenaWidth: json.arenaWidth,
+      arenaHeight: json.arenaHeight,
+      totalPlayers: json.totalPlayers,
+      leaderboard
+    };
   } catch (error) {
+    clearTimeout(timeout);
     console.error(`Error gathering data from ${serverAddress}:`, error);
-    bot.disconnect();
     throw error;
   }
 }
