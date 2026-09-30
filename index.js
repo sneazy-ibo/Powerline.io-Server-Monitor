@@ -1,206 +1,200 @@
-import { fetchGameStats } from './roomdata.js';
-import 'dotenv/config';
+import { fetchGameStats } from "./roomdata.js";
+import "dotenv/config";
 
-const MASTER_URL = 'http://master.powerline.io';
-const REGION_CONFIG = {
-  eu: { country: 'DE', emoji: '🌍', name: 'Europe & Africa' },
-  us: { country: 'US', emoji: '🌎', name: 'America' },
-  as: { country: 'JP', emoji: '🌏', name: 'Asia & Oceania' }
+const MASTER_API = "http://master.powerline.io/servers";
+
+const CONTINENTS = [
+    ["Europe", "🌍"],
+    ["America", "🌎"],
+    ["Asia", "🌏"],
+];
+
+const continent = (label) => {
+    const i = CONTINENTS.findIndex(([name]) => label.includes(name));
+    return i === -1 ? CONTINENTS.length : i;
 };
 
+const regionEmoji = (label) => CONTINENTS[continent(label)]?.[1] ?? "🌐";
+
 const DISCORD_WEBHOOKS = (() => {
-  const urls = (process.env.DISCORD_WEBHOOK_URLS || '').split(',').filter(Boolean);
-  const ids = (process.env.DISCORD_MESSAGE_IDS || '').split(',').filter(Boolean);
+    const urls = (process.env.DISCORD_WEBHOOK_URLS || "").split(",").filter(Boolean);
+    const ids = (process.env.DISCORD_MESSAGE_IDS || "").split(",").filter(Boolean);
 
-  if (!urls.length) {
-    console.log('No Discord webhook URLs provided. Status updates will not be sent.');
-    return [];
-  }
+    if (!urls.length) {
+        console.log("No Discord webhook URLs provided. Status updates will not be sent.");
+        return [];
+    }
 
-  return urls.map((url, i) => ({ url, messageId: ids[i] || '0' }));
+    return urls.map((url, i) => ({ url, messageId: ids[i] || "0" }));
 })();
 
-async function fetchRoomForRegion(region) {
-  const { country } = REGION_CONFIG[region];
+async function fetchRegions() {
+    const response = await fetch(MASTER_API);
 
-  try {
-    const response = await fetch(MASTER_URL, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'text/plain', 'User-Agent': 'RoomCodeFetcher/1.0' },
-      body: country
-    });
-
-    if (!response.ok) return null;
-
-    const data = await response.text();
-    const room = data.split(',').find(r => r.split('!').length === 2);
-    console.log(`${region} - ${data}`);
-
-    if (room) {
-      const [serverAddress, roomCode] = room.split('!');
-      return { serverAddress, roomCode };
+    if (!response.ok) {
+        throw new Error(`Master server returned ${response.status}`);
     }
-  } catch (error) {
-    console.error(`Error fetching room for ${region}:`, error);
-  }
 
-  return null;
+    const { regions = [] } = await response.json();
+    console.log(`Discovered ${regions.length} region(s): ${regions.map((r) => r.region).join(", ")}`);
+
+    return regions
+        .filter((region) => region?.server && region?.hash)
+        .map((region) => ({
+            label: region.region,
+            serverAddress: region.server,
+            roomCode: region.hash,
+            emoji: regionEmoji(region.region),
+        }))
+        .sort((a, b) => continent(a.label) - continent(b.label) || a.label.localeCompare(b.label));
 }
 
-async function fetchAllRooms() {
-  const regions = Object.keys(REGION_CONFIG);
-  const rooms = await Promise.all(regions.map(fetchRoomForRegion));
-
-  return Object.fromEntries(
-    regions.map((region, i) => [region, rooms[i]])
-  );
+async function gatherRoomData(regions) {
+    return Promise.all(
+        regions.map(async (region) => {
+            try {
+                return await fetchGameStats(region.serverAddress);
+            } catch (error) {
+                console.error(`Error gathering data for ${region.label}:`, error);
+                return null;
+            }
+        }),
+    );
 }
 
-async function gatherRoomData(allRooms) {
-  const entries = Object.entries(allRooms);
-  const data = await Promise.all(
-    entries.map(async ([region, room]) => {
-      if (!room?.serverAddress) return [region, null];
+const RANK_ICONS = ["🥇", "🥈", "🥉"];
 
-      try {
-        console.log(`Gathering data for ${region}: ${room.serverAddress}`);
-        return [region, await fetchGameStats(room.serverAddress)];
-      } catch (error) {
-        console.error(`Error gathering data for ${region}:`, error);
-        return [region, null];
-      }
-    })
-  );
+function formatLeaderboard(data) {
+    const leaderboard = (data?.leaderboard || []).slice(0, 10);
+    const totalScore = leaderboard.reduce((sum, p) => sum + p.score, 0);
 
-  return Object.fromEntries(data);
+    if (!leaderboard.length) {
+        return "💯 Total Score: 0\n\n*Room is empty* 💨";
+    }
+
+    const rankings = leaderboard
+        .map((player, i) => {
+            const rank =
+                i < 3
+                    ? RANK_ICONS[i]
+                    : i === 9
+                      ? "💀"
+                      : "\u2008" + String.fromCharCode("➃".charCodeAt(0) + i - 3);
+
+            const nick = (player.nick || "<Unnamed>").replace(/([*_`~|])/g, "\\$1");
+
+            return `${rank} ${nick} - ${player.score}`;
+        })
+        .join("\n");
+
+    return `💯 Total Score: ${totalScore}\n\n${rankings}`;
 }
 
-function createServerField(region, room, data) {
-  const { emoji, name } = REGION_CONFIG[region];
+const SPACER = { name: "\u200b", value: "\u200b", inline: true };
 
-  if (!room) {
-    return { name: `${emoji} ${name}`, value: 'Unavailable', inline: true };
-  }
+// Empty field between the two items of each row -> [item, gap, item]
+const emptyBetween = (fields) =>
+    fields.flatMap((field, i) => (i % 2 === 0 ? [field, SPACER] : [field]));
 
-  const players = data?.totalPlayers ?? 0;
-  const arena = data?.arenaWidth != null && data?.arenaHeight != null
-      ? `${Math.round(data.arenaWidth)}x${Math.round(data.arenaHeight)}`
-      : 'N/A';
+function createServerField(region, data) {
+    const players = data?.totalPlayers ?? 0;
+    const arena =
+        data?.arenaWidth != null && data?.arenaHeight != null
+            ? `${Math.round(data.arenaWidth)}x${Math.round(data.arenaHeight)}`
+            : "N/A";
 
-  const lines = [
-    `🏟️ Arena: ${arena}`,
-    `👥 Players: ${players}${players > 15 ? ' 🔥' : ''}`,
-    '',
-    `🔗 Room: [${room.roomCode}](https://powerline.io/#${room.roomCode})`,
-  ];
-
-  if (data?.ping != null) {
-    lines.push(`🏓 Ping: ${data.ping}ms`);
-  }
-
-  return {
-    name: `${emoji} ${name}`,
-    value: lines.join('\n'),
-    inline: true,
-  };
+    return {
+        name: `${region.emoji} ${region.label}`,
+        value: [
+            `🏟️ Arena: ${arena}`,
+            `👥 Players: ${players}${players > 15 ? " 🔥" : ""}`,
+            `🔗 Room: [${region.roomCode}](https://powerline.io/#${region.roomCode})`,
+        ].join("\n"),
+        inline: true,
+    };
 }
 
 function createLeaderboardField(region, data) {
-  const { emoji, name } = REGION_CONFIG[region];
-  const leaderboard = (data?.leaderboard || []).slice(0, 10);
-  const totalScore = leaderboard.reduce((sum, p) => sum + p.score, 0);
-
-  if (!leaderboard.length) {
     return {
-      name: `${emoji} ${name}`,
-      value: `💯 Total Score: 0\n\n*No players currently online* 💨`,
-      inline: true
+        name: `${region.emoji} ${region.label}`,
+        value: formatLeaderboard(data),
+        inline: true,
     };
-  }
-
-  const RANK_ICONS = ['🥇', '🥈', '🥉'];
-  const rankings = leaderboard.map((player, i) => {
-    const rank = i < 3 ? RANK_ICONS[i] :
-      i === 9 ? '💀' :
-        '\u2008' + String.fromCharCode('➃'.charCodeAt(0) + i - 3);
-
-    const nick = (player.nick || '<Unnamed>')
-      .replace(/n.*?g.*?g/gi, m => m.replace(/g/gi, '*'))
-      .replace(/([*_`~|])/g, '\\$1');
-
-    return `${rank} ${nick} - ${player.score}`;
-  }).join('\n');
-
-  return {
-    name: `${emoji} ${name}`,
-    value: `💯 Total Score: ${totalScore}\n\n${rankings}`,
-    inline: true
-  };
 }
 
-function createDiscordPayload(allRooms, roomData) {
-  const regions = Object.keys(REGION_CONFIG);
+function createPayload(regions, roomData, layout) {
+    const serverFields = regions.map((region, i) => createServerField(region, roomData[i]));
+    const leaderboardFields = regions.map((region, i) => createLeaderboardField(region, roomData[i]));
 
-  return {
-    embeds: [
-      {
-        title: "🐍 Powerline.io Server Status 📈",
-        description: "Real-time data for all regions. Click on the roomcodes to join them",
-        color: 0x00FF00,
-        fields: regions.map(r => createServerField(r, allRooms[r], roomData[r])),
-        footer: { text: "Data updates every few minutes." },
-        timestamp: new Date()
-      },
-      {
-        title: "Powerline.io Leaderboard 🏆",
-        description: "🏅 Top 10 players for each region. Who will dominate the arena? 🏆",
-        color: 0xFFD700,
-        fields: regions.map(r => createLeaderboardField(r, roomData[r])),
-        footer: { text: "Leaderboard updates every few minutes." },
-        timestamp: new Date()
-      }
-    ]
-  };
+    return {
+        embeds: [
+            {
+                title: "🐍 Powerline.io Server Status 📈",
+                description: TEXT.stats,
+                color: 0x00ff00,
+                fields: layout(serverFields),
+                footer: { text: "Data updates every few minutes." },
+                timestamp: new Date(),
+            },
+            {
+                title: "Powerline.io Leaderboard 🏆",
+                description: TEXT.leaderboard,
+                color: 0xffd700,
+                fields: layout(leaderboardFields),
+                footer: { text: "Leaderboard updates every few minutes." },
+                timestamp: new Date(),
+            },
+        ],
+    };
 }
 
-async function sendToDiscord(allRooms, roomData) {
-  if (!DISCORD_WEBHOOKS.length) return;
+const TEXT = {
+    stats: "Real-time stats for every region. Tap a roomcode to join now",
+    leaderboard: "Top 10 players per region. See who dominates the arena now",
+};
 
-  const payload = createDiscordPayload(allRooms, roomData);
+async function sendToDiscord(payload) {
+    if (!DISCORD_WEBHOOKS.length) return;
 
-  await Promise.all(DISCORD_WEBHOOKS.map(async ({ url, messageId }) => {
-    try {
-      const isUpdate = messageId !== '0';
-      const endpoint = isUpdate ? `${url}/messages/${messageId}` : url;
+    await Promise.all(
+        DISCORD_WEBHOOKS.map(async ({ url, messageId }) => {
+            try {
+                const isUpdate = messageId !== "0";
+                const endpoint = isUpdate ? `${url}/messages/${messageId}` : `${url}?wait=true`;
 
-      const response = await fetch(endpoint, {
-        method: isUpdate ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+                const response = await fetch(endpoint, {
+                    method: isUpdate ? "PATCH" : "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
 
-      if (!response.ok) {
-        throw new Error(`Discord API error: ${response.status}`);
-      }
+                if (!response.ok) {
+                    throw new Error(
+                        `Discord API error: ${response.status} ${await response.text()}`,
+                    );
+                }
 
-      console.log(`Successfully ${isUpdate ? 'updated' : 'sent'} Discord message`);
-    } catch (error) {
-      console.error(`Failed to update Discord webhook:`, error);
-    }
-  }));
+                const result = await response.json().catch(() => null);
+                console.log(
+                    `Successfully ${isUpdate ? "updated" : "sent"} Discord message${result?.id ? ` (id ${result.id})` : ""}`,
+                );
+            } catch (error) {
+                console.error("Failed to update Discord webhook:", error);
+            }
+        }),
+    );
 }
 
 async function main() {
-  try {
-    const allRooms = await fetchAllRooms();
-    const roomData = await gatherRoomData(allRooms);
-    console.log(roomData);
-    await sendToDiscord(allRooms, roomData);
-  } catch (error) {
-    console.error('Error in main process:', error);
-  } finally {
-    process.exit(0);
-  }
+    try {
+        const regions = await fetchRegions();
+        const roomData = await gatherRoomData(regions);
+        await sendToDiscord(createPayload(regions, roomData, emptyBetween));
+    } catch (error) {
+        console.error("Error in main process:", error);
+    } finally {
+        process.exit(0);
+    }
 }
 
 main();

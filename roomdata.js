@@ -1,51 +1,41 @@
-import 'dotenv/config';
+import "dotenv/config";
 
-function getStatsUrl(serverAddress) {
-  const [addressPart, roomNumber] = serverAddress.split('/');
-  const [serverIp, port] = addressPart.split(':');
-  const sdm = roomNumber === undefined ? parseInt(port) : 8080;
-  const sslPort = (parseInt(roomNumber) || 0) + sdm;
+const STATS_PATH = "/info";
 
-  return `http://${serverIp}:${sslPort}${ process.env.ENDPOINT}`;
-}
+const getStatsUrl = (serverAddress) => `http://${serverAddress}${STATS_PATH}`;
 
 async function fetchGameStats(serverAddress) {
-  const url = getStatsUrl(serverAddress);
-  console.log(`Fetching stats from: ${url}`);
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), 10000);
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+	try {
+		const response = await fetch(getStatsUrl(serverAddress), {
+			signal: controller.signal,
+		});
+		clearTimeout(timeout);
 
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
+		if (!response.ok) {
+			throw new Error(`Stats endpoint returned ${response.status}`);
+		}
 
-    if (!response.ok) {
-      throw new Error(`Stats endpoint returned ${response.status}`);
-    }
+		const json = await response.json();
 
-    const json = await response.json();
-
-    const leaderboard = (json.leaderboard || [])
-      .sort((a, b) => a.rank - b.rank)
-      .map(entry => ({
-        id: entry.playerId,
-        nick: entry.nick,
-        score: entry.score
-      }));
-
-    return {
-      ping: null,
-      arenaWidth: json.arenaWidth,
-      arenaHeight: json.arenaHeight,
-      totalPlayers: json.totalPlayers,
-      leaderboard
-    };
-  } catch (error) {
-    clearTimeout(timeout);
-    console.error(`Error gathering data from ${serverAddress}:`, error);
-    throw error;
-  }
+		return {
+			arenaWidth: json.arenaWidth,
+			arenaHeight: json.arenaHeight,
+			totalPlayers: json.totalPlayers,
+			leaderboard: (json.leaderboard || [])
+				.sort((a, b) => a.rank - b.rank)
+				.map((entry) => ({
+					id: entry.playerId,
+					nick: entry.nick,
+					score: entry.score,
+				})),
+		};
+	} catch (error) {
+		clearTimeout(timeout);
+		throw error;
+	}
 }
 
 export { fetchGameStats };

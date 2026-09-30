@@ -3,14 +3,13 @@
 A periodically updated monitoring system for [powerline.io](https://powerline.io) that tracks room activity, player statistics, and regional leaderboards.
 
 > [!IMPORTANT]
-> This project focuses on data visualization and reporting. The core data collection and game interaction logic is handled externally.
-> It is not affiliated with Powerline.io or its developer.
+> This project focuses on data visualization and reporting and is not affiliated with Powerline.io or its developer.
 
 ---
 
-##  Features
+## Features
 
-- **Monitoring of all regions** (EU / US / AS)
+- **Automatic region discovery**: the live region list is read from the Powerline master server, so newly added servers appear with no code changes
 - **Scheduled server stats aggregation**
 - **Clickable room code links**
 - **Top player leaderboards per region**
@@ -19,32 +18,31 @@ A periodically updated monitoring system for [powerline.io](https://powerline.io
 
 ## Architecture
 
-This system consists of two decoupled components:
-
-### Public Monitor (this repository)
-- Discord webhook integration
-- Data formatting and embed generation
-- Aggregation and presentation of server statistics
-- Multi-region visualization logic
-
-### Core Data System (external)
-Responsible for collecting and processing raw data from WebSocket connections.
-This separation is intentional to prevent misuse of the reversed protocol for bots/exploits.
+- **Discovery**: the Powerline master API is queried for the current list of regions, each with a display label, stats host, and room code.
+- **Collection**: each region's stats endpoint (`http://<host>:<port>/info`) is fetched directly over HTTP.
+- **Presentation**: region labels are matched to globe emojis by keyword (Europe / America / Asia, falling back to a generic globe), formatted into Discord embeds, and dispatched to the configured webhooks.
 
 ## How It Works
 
-1. The system queries the Powerline master server to retrieve the latest available regional room descriptors
-   (`http://master.powerline.io`)
+1. The system fetches the list of live regions from the Powerline master server
 
-2. The response is parsed and transformed into active WebSocket room URLs via `roomdata.js`
+2. Each region's stats host is queried over HTTP via `roomdata.js`
 
-3. External core logic connects to these WebSocket URLs and processes incoming room data
+3. Raw data is normalized into structured statistics and leaderboard entries
 
-4. Raw data is normalized and formatted into structured statistics and leaderboard entries
+4. Discord embeds are generated from the processed data
 
-5. Discord embeds are generated from the processed data
+5. Updates are dispatched to configured Discord webhooks
 
-6. Updates are dispatched to configured Discord webhooks
+## Configuration
+
+Works out of the box with no configuration: the Powerline endpoints are static and public.
+Optional environment variables:
+
+| Variable               | Description                                                            |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `DISCORD_WEBHOOK_URLS` | Comma-separated Discord webhook URLs (omit to disable posting)         |
+| `DISCORD_MESSAGE_IDS`  | Comma-separated message IDs to edit in place (`0` posts a new message) |
 
 ## Example Output
 
